@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Emoji Word Rush</title>
+<!-- YouTube Playables SDK. Must be the first script. The game also runs without it. -->
+<script src="https://www.youtube.com/game_api/v1"></script>
+<style>
+  :root{
+    --bg:#0f1b3d; --bg2:#1c2f66; --card:#ffffff; --ink:#14213d; --muted:#6b7a99;
+    --accent:#2f80ed; --good:#27ae60; --bad:#eb5757; --gold:#f2c94c;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
+    font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#fff}
+  body{background:radial-gradient(circle at 50% 0%,var(--bg2),var(--bg) 70%)}
+  #app{position:relative;height:100%;max-width:520px;margin:0 auto;display:flex;flex-direction:column;padding:16px}
+  .screen{display:none;flex:1;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:16px}
+  .screen.on{display:flex}
+  h1{margin:0;font-size:clamp(30px,8vw,44px);line-height:1.1}
+  h1 span{color:var(--gold)}
+  .sub{color:#c9d6f5;font-size:16px;max-width:360px}
+  .btn{border:0;border-radius:16px;padding:16px 36px;font-size:20px;font-weight:700;cursor:pointer;
+    background:var(--gold);color:var(--ink);box-shadow:0 6px 0 #c9a227;transition:transform .08s}
+  .btn:active{transform:translateY(4px);box-shadow:0 2px 0 #c9a227}
+  .btn.ghost{background:transparent;color:#fff;box-shadow:none;border:2px solid #4a5f99;font-size:16px;padding:10px 22px}
+  .best{color:var(--gold);font-weight:700}
+  /* HUD */
+  #hud{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:18px}
+  #timebar{height:10px;border-radius:6px;background:#2a3d75;margin:10px 0 4px;overflow:hidden}
+  #timefill{height:100%;width:100%;background:linear-gradient(90deg,var(--good),var(--gold));transition:width .1s linear}
+  #combo{min-height:22px;color:var(--gold);font-weight:700;text-align:center}
+  #play{flex:1;display:flex;flex-direction:column;justify-content:center;gap:18px}
+  #emoji{font-size:clamp(96px,30vw,150px);text-align:center;line-height:1.1;filter:drop-shadow(0 8px 12px rgba(0,0,0,.35))}
+  #emoji.pop{animation:pop .25s ease}
+  @keyframes pop{0%{transform:scale(.6)}80%{transform:scale(1.08)}100%{transform:scale(1)}}
+  #prompt{text-align:center;color:#c9d6f5;font-size:16px}
+  #choices{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .choice{border:0;border-radius:14px;background:var(--card);color:var(--ink);font-size:clamp(18px,5vw,22px);
+    font-weight:700;padding:18px 8px;cursor:pointer;box-shadow:0 5px 0 #c3cce0;transition:transform .08s,background .15s}
+  .choice:active{transform:translateY(3px);box-shadow:0 2px 0 #c3cce0}
+  .choice.right{background:var(--good);color:#fff;box-shadow:0 5px 0 #1d8048}
+  .choice.wrong{background:var(--bad);color:#fff;box-shadow:0 5px 0 #b13e3e;animation:shake .3s}
+  @keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+  #float{position:absolute;left:50%;top:38%;transform:translateX(-50%);font-size:28px;font-weight:800;pointer-events:none;opacity:0}
+  #float.show{animation:rise .7s ease forwards}
+  @keyframes rise{0%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,-50px)}}
+  #learned{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:420px;max-height:30vh;overflow:auto}
+  .tag{background:#24396f;border-radius:10px;padding:6px 10px;font-size:15px}
+  .tag.miss{background:#5a2a3a}
+  #paused{position:absolute;inset:0;background:rgba(10,18,40,.85);display:none;align-items:center;justify-content:center;font-size:28px;font-weight:800}
+  #paused.on{display:flex}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Start -->
+  <div class="screen on" id="s-start">
+    <div style="font-size:80px">🍎🐶🚗</div>
+    <h1>Emoji <span>Word Rush</span></h1>
+    <p class="sub">See the emoji, tap the right English word.<br>Right answers add time. How many can you get?</p>
+    <button class="btn" id="b-start">PLAY</button>
+    <div>Best: <span class="best" id="best-start">0</span></div>
+    <button class="btn ghost" id="b-sound">🔊 Sound on</button>
+  </div>
+
+  <!-- Game -->
+  <div class="screen" id="s-game" style="justify-content:flex-start;align-items:stretch">
+    <div id="hud"><div>⭐ <span id="score">0</span></div><div>⏱ <span id="time">30</span>s</div></div>
+    <div id="timebar"><div id="timefill"></div></div>
+    <div id="combo"></div>
+    <div id="play">
+      <div id="emoji">🍎</div>
+      <div id="prompt">What is this in English?</div>
+      <div id="choices"></div>
+    </div>
+    <div id="float"></div>
+  </div>
+
+  <!-- Game over -->
+  <div class="screen" id="s-over">
+    <h1>Time's <span>up!</span></h1>
+    <div style="font-size:56px;font-weight:800" id="final">0</div>
+    <div id="newbest" class="best"></div>
+    <div>Best: <span class="best" id="best-over">0</span></div>
+    <p class="sub" style="margin:0">Words from this round:</p>
+    <div id="learned"></div>
+    <button class="btn" id="b-again">PLAY AGAIN</button>
+  </div>
+
+  <div id="paused">Paused</div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  // ---------- YouTube Playables SDK (optional) ----------
+  var yt = (typeof window.ytgame !== "undefined" && window.ytgame && window.ytgame.IN_PLAYABLES_ENV) ? window.ytgame : null;
+  function sdk(fn){ try{ if(yt) return fn(yt); }catch(e){ console.warn("ytgame:",e); } }
+
+  // ---------- Word bank: [emoji, word, level] ----------
+  var WORDS = [
+    ["🍎","apple"],["🍌","banana"],["🍇","grapes"],["🍉","watermelon"],["🍓","strawberry"],["🍋","lemon"],
+    ["🥕","carrot"],["🍞","bread"],["🧀","cheese"],["🥚","egg"],["🍕","pizza"],["🍔","burger"],["🍦","ice cream"],
+    ["🐶","dog"],["🐱","cat"],["🐭","mouse"],["🐰","rabbit"],["🐻","bear"],["🐯","tiger"],["🦁","lion"],
+    ["🐮","cow"],["🐷","pig"],["🐸","frog"],["🐔","chicken"],["🐧","penguin"],["🐘","elephant"],["🐒","monkey"],
+    ["🐟","fish"],["🐢","turtle"],["🦋","butterfly"],["🐝","bee"],["🐍","snake"],["🦒","giraffe"],
+    ["🚗","car"],["🚌","bus"],["🚲","bicycle"],["✈️","plane"],["🚢","ship"],["🚂","train"],["🚀","rocket"],
+    ["🏠","house"],["🏫","school"],["🏥","hospital"],["⛪","church"],["🌳","tree"],["🌸","flower"],["🌙","moon"],
+    ["☀️","sun"],["⭐","star"],["☁️","cloud"],["🌧️","rain"],["❄️","snow"],["🌈","rainbow"],["🔥","fire"],
+    ["📚","books"],["✏️","pencil"],["📱","phone"],["💻","laptop"],["⌚","watch"],["🔑","key"],["☂️","umbrella"],
+    ["👓","glasses"],["👟","shoes"],["👕","T-shirt"],["🎒","backpack"],["🛏️","bed"],["🪑","chair"],["🚪","door"],
+    ["⚽","football"],["🎸","guitar"],["🎁","gift"],["🎈","balloon"],["⏰","alarm clock"],["💡","light bulb"],
+    ["👀","eyes"],["👂","ear"],["👃","nose"],["✋","hand"],["🦶","foot"],["❤️","heart"],
+    ["😀","happy"],["😢","sad"],["😡","angry"],["😴","sleepy"],["😱","scared"],["🤒","sick"]
+  ];
+
+  // ---------- State ----------
+  var START_TIME = 30, MAX_TIME = 45;
+  var state = { score:0, time:START_TIME, combo:0, running:false, paused:false, answer:null, last:0, locked:false, seen:[] };
+  var save = { best:0, sound:true };
+  var $ = function(id){ return document.getElementById(id); };
+
+  // ---------- Save / load ----------
+  function persist(){
+    var s = JSON.stringify(save);
+    if(yt){ sdk(function(g){ g.game.saveData(s).catch(function(){}); }); }
+    else { try{ localStorage.setItem("ewr_save", s); }catch(e){} }
+  }
+  function applySave(raw){
+    try{ var d = raw ? JSON.parse(raw) : null; if(d){ save.best = d.best|0; save.sound = d.sound !== false; } }catch(e){}
+    refreshMeta();
+  }
+  function refreshMeta(){
+    $("best-start").textContent = save.best; $("best-over").textContent = save.best;
+    $("b-sound").textContent = save.sound ? "🔊 Sound on" : "🔇 Sound off";
+  }
+
+  // ---------- Audio (WebAudio beeps + optional pronunciation) ----------
+  var actx = null, platformAudio = true;
+  function audioOn(){ return save.sound && platformAudio && !state.paused; }
+  function beep(freq, dur, type){
+    if(!audioOn()) return;
+    try{
+      actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+      var o = actx.createOscillator(), g = actx.createGain();
+      o.type = type||"sine"; o.frequency.value = freq;
+      g.gain.setValueAtTime(.15, actx.currentTime); g.gain.exponentialRampToValueAtTime(.001, actx.currentTime+dur);
+      o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime+dur);
+    }catch(e){}
+  }
+  function say(word){
+    if(!audioOn() || !window.speechSynthesis) return;
+    try{ speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(word); u.lang="en-US"; u.rate=.95; speechSynthesis.speak(u); }catch(e){}
+  }
+
+  // ---------- Screens ----------
+  function show(id){ ["s-start","s-game","s-over"].forEach(function(s){ $(s).classList.toggle("on", s===id); }); }
+
+  // ---------- Game ----------
+  function shuffle(a){ for(var i=a.length-1;i>0;i--){ var j=Math.random()*(i+1)|0, t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
+  var deck = [];
+  function nextQuestion(){
+    if(deck.length===0) deck = shuffle(WORDS.slice());
+    var q = deck.pop();
+    var opts = [q[1]];
+    while(opts.length<4){ var w = WORDS[Math.random()*WORDS.length|0][1]; if(opts.indexOf(w)<0) opts.push(w); }
+    shuffle(opts);
+    state.answer = q; state.locked = false;
+    var em = $("emoji"); em.textContent = q[0]; em.classList.remove("pop"); void em.offsetWidth; em.classList.add("pop");
+    var box = $("choices"); box.innerHTML = "";
+    opts.forEach(function(w){
+      var b = document.createElement("button"); b.className = "choice"; b.textContent = w;
+      b.addEventListener("click", function(){ pick(b, w); });
+      box.appendChild(b);
+    });
+  }
+  function floatText(t, color){
+    var f = $("float"); f.textContent = t; f.style.color = color; f.classList.remove("show"); void f.offsetWidth; f.classList.add("show");
+  }
+  function pick(btn, w){
+    if(!state.running || state.locked || state.paused) return;
+    state.locked = true;
+    var q = state.answer, ok = (w === q[1]);
+    if(ok){
+      state.combo++;
+      var pts = 10 + Math.min(state.combo-1, 5)*2;
+      state.score += pts;
+      state.time = Math.min(MAX_TIME, state.time + 2);
+      btn.classList.add("right"); floatText("+"+pts, "#6fe39b");
+      beep(660,.12); setTimeout(function(){ beep(880,.15); },90);
+      state.seen.push({w:q[1], e:q[0], ok:true});
+    } else {
+      state.combo = 0;
+      state.time = Math.max(0, state.time - 3);
+      btn.classList.add("wrong"); floatText("-3s", "#ff8a8a"); beep(180,.25,"square");
+      [].forEach.call(document.querySelectorAll(".choice"), function(b){ if(b.textContent===q[1]) b.classList.add("right"); });
+      state.seen.push({w:q[1], e:q[0], ok:false});
+    }
+    say(q[1]);
+    $("combo").textContent = state.combo>=2 ? "🔥 Combo x"+state.combo : "";
+    $("score").textContent = state.score;
+    setTimeout(function(){ if(state.running) nextQuestion(); }, ok ? 550 : 1100);
+  }
+  function startGame(){
+    state.score=0; state.time=START_TIME; state.combo=0; state.seen=[]; state.running=true; state.paused=false;
+    $("score").textContent = 0; $("combo").textContent = "";
+    show("s-game"); nextQuestion(); state.last = performance.now();
+    requestAnimationFrame(tick);
+  }
+  function tick(now){
+    if(!state.running) return;
+    var dt = (now - state.last)/1000; state.last = now;
+    if(!state.paused){
+      state.time -= Math.min(dt, .25);
+      if(state.time <= 0){ state.time = 0; endGame(); }
+      $("time").textContent = Math.ceil(state.time);
+      $("timefill").style.width = (state.time/MAX_TIME*100)+"%";
+    }
+    if(state.running) requestAnimationFrame(tick);
+  }
+  function endGame(){
+    state.running = false;
+    $("final").textContent = state.score;
+    var isBest = state.score > save.best;
+    if(isBest){ save.best = state.score; persist(); }
+    $("newbest").textContent = isBest && state.score>0 ? "🏆 New best score!" : "";
+    refreshMeta();
+    var box = $("learned"); box.innerHTML = "";
+    var uniq = {};
+    state.seen.forEach(function(s){ if(uniq[s.w]) return; uniq[s.w]=1;
+      var t = document.createElement("span"); t.className = "tag"+(s.ok?"":" miss"); t.textContent = s.e+" "+s.w; box.appendChild(t); });
+    if(!state.seen.length) box.innerHTML = '<span class="tag">Try tapping a word next time!</span>';
+    sdk(function(g){ g.engagement.sendScore({ value: state.score }).catch(function(){}); });
+    beep(520,.15); setTimeout(function(){ beep(390,.3); },150);
+    show("s-over");
+  }
+  function setPaused(p){
+    state.paused = p; $("paused").classList.toggle("on", p && state.running);
+    if(p && window.speechSynthesis){ try{ speechSynthesis.cancel(); }catch(e){} }
+    if(!p) state.last = performance.now();
+  }
+
+  // ---------- UI ----------
+  $("b-start").addEventListener("click", startGame);
+  $("b-again").addEventListener("click", startGame);
+  $("b-sound").addEventListener("click", function(){ save.sound = !save.sound; persist(); refreshMeta(); beep(660,.1); });
+  document.addEventListener("visibilitychange", function(){ if(!yt) setPaused(document.hidden); });
+
+  // ---------- Boot ----------
+  sdk(function(g){ g.game.firstFrameReady(); });
+  if(yt){
+    sdk(function(g){
+      platformAudio = g.system.isAudioEnabled();
+      g.system.onAudioEnabledChange(function(on){ platformAudio = on; if(!on && window.speechSynthesis) speechSynthesis.cancel(); });
+      g.system.onPause(function(){ setPaused(true); });
+      g.system.onResume(function(){ setPaused(false); });
+    });
+    yt.game.loadData().then(applySave, function(){ applySave(null); }).then(function(){ sdk(function(g){ g.game.gameReady(); }); });
+  } else {
+    var raw = null; try{ raw = localStorage.getItem("ewr_save"); }catch(e){}
+    applySave(raw);
+  }
+})();
+</script>
+</body>
+</html>
